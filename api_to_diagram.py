@@ -1,9 +1,31 @@
 # %%
+from collections import Counter
 import os
 import json
+import shutil
+from tqdm import tqdm
 import numpy as np
 from intervals import IntInterval
 import cv2
+from PIL import Image
+import datetime
+
+REPORT_DIR_PATH = "./report_dir/"
+REPORT_PICTURE_DIR_PATH = "./report_diagram_dir/"
+VIRUS_FAMILY_FILE_PATH = "./VirusShare3_Family.txt"
+VIRUS_LIST_FILE_PATH = "./VirusShare3_list.txt"
+RAW_REPORT_DIR_PATH = "./analyses_dir/"
+
+trigger = {
+    "copy_file": False,
+    "color_table": True,
+    "diagram": True
+}
+
+def get_color(count:int, interval_list):
+    for i, interval in enumerate(interval_list):
+        if count in interval:
+            return i
 
 def hex_to_rgb(hex):
     rgb = list()
@@ -11,52 +33,93 @@ def hex_to_rgb(hex):
         decimal = int(hex[i:i+2], 16)
         rgb.append(decimal)
     return tuple(rgb)
-def get_x(count:int):
-    for i, interval in enumerate(interval_list):
-        if count in interval:
+
+def get_time_range(timestamp_interval, _time):
+    for i, time in enumerate(timestamp_interval):
+        if _time <= time:
             return i
+    return len(timestamp_interval)
+def reset_category_dict():
+    _dict = {
+        "certificate": 0,
+        "crypto": 0,
+        "exception": 0,
+        "file": 0,
+        "iexplore": 0,
+        "process": 0,
+        "misc": 0,
+        "netapi": 0,
+        "network": 0,
+        "office": 0,
+        "ole": 0,
+        "registry": 0,
+        "resource": 0,
+        "services": 0,
+        "synchronisation": 0,
+        "ui": 0,
+        "system": 0
+    }
+    return _dict
 
-REPORT_DIR_PATH = "./report_dir/"
-REPORT_PICTURE_DIR_PATH = "./report_diagram_dir/"
-report_file_list = os.listdir(REPORT_DIR_PATH)
 
-other_category = list()
-for report in report_file_list:
-    report_path = os.getcwd() + REPORT_DIR_PATH + report
-    with open(report_path, encoding="utf-8") as file:
-        category_dict = {
-            "certificate": 0,
-            "crypto": 0,
-            "exception": 0,
-            "file": 0,
-            "iexplore": 0,
-            "process": 0,
-            "misc": 0,
-            "netapi": 0,
-            "network": 0,
-            "office": 0,
-            "ole": 0,
-            "registry": 0,
-            "resource": 0,
-            "services": 0,
-            "synchronisation": 0,
-            "ui": 0
-        }
-        report_json = json.load(file)
-        process_list = report_json["behavior"]["processes"]
-        for process in process_list:
-            for call in process["calls"]:  # get api call category
-                if call is not None:
-                    category = call["category"]
-                    if category in category_dict:
-                        category_dict[category] += 1
-        #             elif category not in other_category:
-        #                 other_category.append(category)
-        # print(other_category)
-        # print(json.dumps(category_dict, indent=4))
+with open(VIRUS_FAMILY_FILE_PATH, encoding="utf-8") as file:
+    virus_family = file.readlines()
+    virus_family_dict = dict()
+    for virus in virus_family:
+        virus_list = virus.split()
+        if len(virus_list) >= 3 and "FAM:" in  virus_list[2]:
+            family =  virus_list[2]
+            family = family[family.index("FAM:")+4:family.index("|", family.index("FAM:"))]
+            virus_family_dict["VirusShare_"+virus_list[0]] = family
+virus_family_cnt = Counter(virus_family_dict.values())
+number = 16
+virus_list = list(word for word, word_count in virus_family_cnt.most_common(number))
+virus_dict = dict.fromkeys(virus_list, 0)
+
+for family in virus_list:
+    if not os.path.exists(os.getcwd()+REPORT_DIR_PATH[1:]+family):
+        os.makedirs(os.getcwd()+REPORT_DIR_PATH[1:]+family)
+    if not os.path.exists(os.getcwd()+REPORT_PICTURE_DIR_PATH[1:]+family):
+        os.makedirs(os.getcwd()+REPORT_PICTURE_DIR_PATH[1:]+family)
+
+with open(VIRUS_LIST_FILE_PATH, encoding="utf-8", mode='w') as file:
+    for virus, family in virus_family_dict.items():
+        if family in virus_dict and virus_dict[family] < 100:
+            file.write(f"{virus} ")
+            virus_dict[family] += 1
 
 # %%
+if trigger["copy_file"]:
+    report_file_list = os.listdir(RAW_REPORT_DIR_PATH)
+
+    for report in tqdm(report_file_list):
+        report_path = os.getcwd() + RAW_REPORT_DIR_PATH[1:] + report
+        # print(report_path)
+        dir_file_list = os.listdir(report_path)
+        for file in dir_file_list:
+            if file == "task.json":
+                file_path = report_path + '\\' + file
+                with open(file_path, encoding="utf-8") as file:
+                    file_json = json.load(file)
+                    virus_file_ubuntu_path = file_json["target"]
+                    new_file_name = virus_file_ubuntu_path[virus_file_ubuntu_path.index("VirusShare_"):]
+                    old_file_name = report_path + "\\reports\\report.json"
+                    # print(old_file_name)
+                    if os.path.exists(old_file_name):
+                        size = os.path.getsize(old_file_name)
+                        if new_file_name in virus_family_dict and size < 3000000:
+                            if os.path.exists(os.getcwd() + REPORT_DIR_PATH[1:] + '/' + virus_family_dict[new_file_name]):
+                                new_file_name = os.getcwd() + REPORT_DIR_PATH[1:] + '/' + virus_family_dict[new_file_name] + '/' + new_file_name + ".json"
+                                # print(new_file_name)
+                                if not os.path.exists(new_file_name):
+                                    shutil.copy(old_file_name, new_file_name)
+                                else:
+                                    os.remove(new_file_name)
+                                    shutil.copy(old_file_name, new_file_name)
+# %%
+if trigger["color_table"]:
     interval_list = list()
+
     count_list = [-1, 0, 3, 7, 12, 18, 25, 33, 42, 52, 63, 75, 88, 102, 117, 133, 200, float("inf")]
     for i in range(len(count_list)-1):
         data_range = IntInterval.open_closed(count_list[i], count_list[i+1])  # open_closed → (,]
@@ -89,25 +152,58 @@ for report in report_file_list:
             color_table[key].append(hex_to_rgb(value))
     # print(json.dumps(color_table, indent=4))
 
-    # %%
+# %%
+if trigger["diagram"]:
+    virus_category_dirs = os.listdir(REPORT_DIR_PATH)
 
-    category_list = [*category_dict]
-    category_list.sort()    # make sure the order is consistent
-    # print(category_list)
+    # other_category = list()
+    all_category_dict = dict()
+    time_frequency_setting = 17
+    for virus_category_dir in virus_category_dirs:
+        report_file_list = os.listdir(os.getcwd() + REPORT_DIR_PATH[1:] + virus_category_dir)
+        for report in tqdm(report_file_list):
+            report_path = os.getcwd() + REPORT_DIR_PATH[1:] + virus_category_dir + '/' + report
+            # print(report_path)
+            with open(report_path, encoding="utf-8") as file:
+                category_dict = reset_category_dict()
+                report_json = json.load(file)
+                if "behavior" in report_json:
+                    process_list = report_json["behavior"]["processes"]
+                    timestamp_list = list()
+                    for process in process_list:
+                        for call in process["calls"]:  # get api call time
+                            if call is not None:
+                                timestamp_list.append(call["time"])
+                    if timestamp_list:
+                        timestamp_list.sort()
+                        frequency = (timestamp_list[-1] - timestamp_list[0])/time_frequency_setting
+                        if frequency:
+                            timestamp_interval = [float('%.5f'%(time+0.00005)) for time in np.arange(timestamp_list[0]+frequency, timestamp_list[-1], frequency)]
+                        else:
+                            timestamp_interval = [timestamp_list[0] for i in range(time_frequency_setting)]
+                        # if len(timestamp_interval) < time_frequency_setting-1:
+                        #     timestamp_interval.append(timestamp_list[-1]+frequency)
+                        category_dict_of_time = [reset_category_dict() for i in range(time_frequency_setting)]
+                        for process in process_list:
+                            for call in process["calls"]:  # get api call category
+                                if call is not None:
+                                    category = call["category"]
+                                    # print(datetime.datetime.fromtimestamp(call["time"]))
+                                    category_dict_index = get_time_range(timestamp_interval, float(str(call["time"])[:str(call["time"]).find('.')+5]))
+                                    if category in category_dict_of_time[category_dict_index]:
+                                        category_dict_of_time[category_dict_index][category] += 1
 
-    row = 17
-    col = 17
-    img = np.zeros((row, col, 3), np.uint8)
-    img.fill(255)
-    for y, category in enumerate(category_list):
-        x = get_x(category_dict[category])
-        for _x in range(x):
-            img[y, _x] = color_table[category][_x]
-
-    # cv2.imshow('3 Channel Window', img)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
-    # print("image shape: ", img.shape)
-    cv2.imwrite(REPORT_PICTURE_DIR_PATH + report.split('.')[0] + '.jpg', img)
-
-
+                        row = 17
+                        col = 17
+                        img = np.zeros((row, col, 3), np.uint8)
+                        img.fill(255)
+                        for x, category_dict in enumerate(category_dict_of_time):
+                            category_list = [*category_dict]
+                            category_list.sort()    # make sure the order is consistent
+                            for y, category in enumerate(category_list):
+                                count = get_color(category_dict[category], interval_list)
+                                img[y, x] = color_table[category][count]
+                        report_name = report.split('.')[0]
+                        img = Image.fromarray(img)
+                        img.save(REPORT_PICTURE_DIR_PATH + virus_category_dir + '/' + report_name + '.png')
+                        # cv2.imwrite(REPORT_PICTURE_DIR_PATH + virus_category_dir + '/' + report_name + '.png', img)
