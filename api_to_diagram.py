@@ -9,14 +9,16 @@ from intervals import IntInterval
 import cv2
 from PIL import Image
 import datetime
+import re
 
 REPORT_DIR_PATH = "./report_dir/"
 REPORT_PICTURE_DIR_PATH = "./report_diagram_dir/"
 VIRUS_FAMILY_FILE_PATH = "./VirusShare3_Family.txt"
-VIRUS_LIST_FILE_PATH = "./VirusShare3_list.txt"
-RAW_REPORT_DIR_PATH = "./analyses_dir/"
+VIRUS_LIST_FILE_PATH = "./VirusShare3_list2.txt"
+RAW_REPORT_DIR_PATH = "./analyses1_dir/"
 
 trigger = {
+    "create_file": False,
     "copy_file": False,
     "color_table": True,
     "diagram": True
@@ -61,13 +63,12 @@ def reset_category_dict():
     }
     return _dict
 
-
 with open(VIRUS_FAMILY_FILE_PATH, encoding="utf-8") as file:
     virus_family = file.readlines()
     virus_family_dict = dict()
     for virus in virus_family:
         virus_list = virus.split()
-        if len(virus_list) >= 3 and "FAM:" in  virus_list[2]:
+        if len(virus_list) >= 3 and len(re.findall('FAM:', virus_list[2])) == 1:
             family =  virus_list[2]
             family = family[family.index("FAM:")+4:family.index("|", family.index("FAM:"))]
             virus_family_dict["VirusShare_"+virus_list[0]] = family
@@ -82,16 +83,20 @@ for family in virus_list:
     if not os.path.exists(os.getcwd()+REPORT_PICTURE_DIR_PATH[1:]+family):
         os.makedirs(os.getcwd()+REPORT_PICTURE_DIR_PATH[1:]+family)
 
-with open(VIRUS_LIST_FILE_PATH, encoding="utf-8", mode='w') as file:
-    for virus, family in virus_family_dict.items():
-        if family in virus_dict and virus_dict[family] < 100:
-            file.write(f"{virus} ")
-            virus_dict[family] += 1
+if trigger["create_file"]:
+    with open(VIRUS_LIST_FILE_PATH, encoding="utf-8", mode='w') as file:
+        for virus, family in virus_family_dict.items():
+            if family in virus_dict and virus_dict[family] < 100:
+                file.write(f"{virus} ")
+                virus_dict[family] += 1
+else:
+    with open(VIRUS_LIST_FILE_PATH, encoding="utf-8") as file:
+        virus_file_list = file.read().split()
 
 # %%
 if trigger["copy_file"]:
     report_file_list = os.listdir(RAW_REPORT_DIR_PATH)
-
+    count = 0
     for report in tqdm(report_file_list):
         report_path = os.getcwd() + RAW_REPORT_DIR_PATH[1:] + report
         # print(report_path)
@@ -103,19 +108,22 @@ if trigger["copy_file"]:
                     file_json = json.load(file)
                     virus_file_ubuntu_path = file_json["target"]
                     new_file_name = virus_file_ubuntu_path[virus_file_ubuntu_path.index("VirusShare_"):]
-                    old_file_name = report_path + "\\reports\\report.json"
-                    # print(old_file_name)
-                    if os.path.exists(old_file_name):
-                        size = os.path.getsize(old_file_name)
-                        if new_file_name in virus_family_dict and size < 3000000:
-                            if os.path.exists(os.getcwd() + REPORT_DIR_PATH[1:] + '/' + virus_family_dict[new_file_name]):
-                                new_file_name = os.getcwd() + REPORT_DIR_PATH[1:] + '/' + virus_family_dict[new_file_name] + '/' + new_file_name + ".json"
-                                # print(new_file_name)
-                                if not os.path.exists(new_file_name):
-                                    shutil.copy(old_file_name, new_file_name)
-                                else:
-                                    os.remove(new_file_name)
-                                    shutil.copy(old_file_name, new_file_name)
+                    if new_file_name in virus_file_list:
+                        count += 1
+                        old_file_name = report_path + "\\reports\\report.json"
+                        # print(old_file_name)
+                        if os.path.exists(old_file_name):
+                            size = os.path.getsize(old_file_name)
+                            if new_file_name in virus_family_dict and size < 3000000:
+                                if os.path.exists(os.getcwd() + REPORT_DIR_PATH[1:] + '/' + virus_family_dict[new_file_name]):
+                                    new_file_name = os.getcwd() + REPORT_DIR_PATH[1:] + '/' + virus_family_dict[new_file_name] + '/' + new_file_name + ".json"
+                                    # print(new_file_name)
+                                    if not os.path.exists(new_file_name):
+                                        shutil.copy(old_file_name, new_file_name)
+                                    else:
+                                        os.remove(new_file_name)
+                                        shutil.copy(old_file_name, new_file_name)
+    print(count)
 # %%
 if trigger["color_table"]:
     interval_list = list()
@@ -159,6 +167,7 @@ if trigger["diagram"]:
     # other_category = list()
     all_category_dict = dict()
     time_frequency_setting = 17
+    lower_bound = 300
     for virus_category_dir in virus_category_dirs:
         report_file_list = os.listdir(os.getcwd() + REPORT_DIR_PATH[1:] + virus_category_dir)
         for report in tqdm(report_file_list):
@@ -174,7 +183,7 @@ if trigger["diagram"]:
                         for call in process["calls"]:  # get api call time
                             if call is not None:
                                 timestamp_list.append(call["time"])
-                    if timestamp_list:
+                    if timestamp_list and len(timestamp_list) > lower_bound:
                         timestamp_list.sort()
                         frequency = (timestamp_list[-1] - timestamp_list[0])/time_frequency_setting
                         if frequency:
