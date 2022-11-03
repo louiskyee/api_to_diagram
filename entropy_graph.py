@@ -29,6 +29,7 @@ def entropy_graph(file_name:str, segment_len, saveAs:str = 'output.png'):
             segment = content[segment_len * i : segment_len * i + segment_len]
             result_list.append(shannon_entropy(segment))
 
+        plt.clf()
         plt.ylim(0, np.log2(segment_len))
         plt.plot(result_list,c='b')
         plt.savefig(saveAs)
@@ -51,10 +52,12 @@ if __name__ == "__main__":
     virus_list = os.listdir(VIRUS_DIR_PATH)
     makdir(SAVE_VIRUS_DIR_PATH)
     segment_len = 200
-    for segment_len in range(200, 501, 100):
+    for segment_len in range(200, 501, 50):
         print(f"segment_len = {segment_len}")
         makdir(SAVE_VIRUS_DIR_PATH + str(segment_len))
         for virus in virus_list:
-            if virus_family_dict[virus] == "bancos" or virus_family_dict[virus] == "banload":
-                makdir(SAVE_VIRUS_DIR_PATH + str(segment_len) + '/' + virus_family_dict[virus])
-                entropy_graph(file_name=VIRUS_DIR_PATH + virus, segment_len=segment_len, saveAs=SAVE_VIRUS_DIR_PATH + str(segment_len) + '/' + virus_family_dict[virus] + '/'+ virus)
+            # if virus_family_dict[virus] == "bancos" or virus_family_dict[virus] == "onlinegames":
+            makdir(SAVE_VIRUS_DIR_PATH + str(segment_len) + '/' + virus_family_dict[virus])
+            file_name = VIRUS_DIR_PATH + virus
+            output = SAVE_VIRUS_DIR_PATH + str(segment_len) + '/' + virus_family_dict[virus] + '/'+ virus + '.png'
+            entropy_graph(file_name=file_name, segment_len=segment_len, saveAs=output)

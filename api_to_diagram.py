@@ -10,16 +10,15 @@ import cv2
 from PIL import Image
 import datetime
 import re
+import ijson
 
-REPORT_DIR_PATH = "./report_dir/"
+REPORT_DIR_PATH = "./analyses/"
 REPORT_PICTURE_DIR_PATH = "./report_diagram_dir/"
 VIRUS_FAMILY_FILE_PATH = "./VirusShare3_Family.txt"
 VIRUS_LIST_FILE_PATH = "./VirusShare3_list2.txt"
-RAW_REPORT_DIR_PATH = "./analyses1_dir/"
 
 trigger = {
     "create_file": False,
-    "copy_file": False,
     "color_table": True,
     "diagram": True
 }
@@ -41,6 +40,7 @@ def get_time_range(timestamp_interval, _time):
         if _time <= time:
             return i
     return len(timestamp_interval)
+
 def reset_category_dict():
     _dict = {
         "certificate": 0,
@@ -87,43 +87,11 @@ if trigger["create_file"]:
     with open(VIRUS_LIST_FILE_PATH, encoding="utf-8", mode='w') as file:
         for virus, family in virus_family_dict.items():
             if family in virus_dict and virus_dict[family] < 100:
-                file.write(f"{virus} ")
+                file.write(f"{virus} {family}\n")
                 virus_dict[family] += 1
 else:
     with open(VIRUS_LIST_FILE_PATH, encoding="utf-8") as file:
         virus_file_list = file.read().split()
-
-# %%
-if trigger["copy_file"]:
-    report_file_list = os.listdir(RAW_REPORT_DIR_PATH)
-    count = 0
-    for report in tqdm(report_file_list):
-        report_path = os.getcwd() + RAW_REPORT_DIR_PATH[1:] + report
-        # print(report_path)
-        dir_file_list = os.listdir(report_path)
-        for file in dir_file_list:
-            if file == "task.json":
-                file_path = report_path + '\\' + file
-                with open(file_path, encoding="utf-8") as file:
-                    file_json = json.load(file)
-                    virus_file_ubuntu_path = file_json["target"]
-                    new_file_name = virus_file_ubuntu_path[virus_file_ubuntu_path.index("VirusShare_"):]
-                    if new_file_name in virus_file_list:
-                        count += 1
-                        old_file_name = report_path + "\\reports\\report.json"
-                        # print(old_file_name)
-                        if os.path.exists(old_file_name):
-                            size = os.path.getsize(old_file_name)
-                            if new_file_name in virus_family_dict and size < 3000000:
-                                if os.path.exists(os.getcwd() + REPORT_DIR_PATH[1:] + '/' + virus_family_dict[new_file_name]):
-                                    new_file_name = os.getcwd() + REPORT_DIR_PATH[1:] + '/' + virus_family_dict[new_file_name] + '/' + new_file_name + ".json"
-                                    # print(new_file_name)
-                                    if not os.path.exists(new_file_name):
-                                        shutil.copy(old_file_name, new_file_name)
-                                    else:
-                                        os.remove(new_file_name)
-                                        shutil.copy(old_file_name, new_file_name)
-    print(count)
 # %%
 if trigger["color_table"]:
     interval_list = list()
@@ -173,16 +141,19 @@ if trigger["diagram"]:
         for report in tqdm(report_file_list):
             report_path = os.getcwd() + REPORT_DIR_PATH[1:] + virus_category_dir + '/' + report
             # print(report_path)
-            with open(report_path, encoding="utf-8") as file:
+            with open(report_path, encoding="utf-8", errors='ignore') as file:
                 category_dict = reset_category_dict()
-                report_json = json.load(file)
-                if "behavior" in report_json:
-                    process_list = report_json["behavior"]["processes"]
+                report_json = ijson.items(file, 'behavior.processes.item')
+                try:
+                    process_list = [processes for processes in report_json]
+                except Exception as e:
+                    pass
+                if process_list:
                     timestamp_list = list()
                     for process in process_list:
                         for call in process["calls"]:  # get api call time
                             if call is not None:
-                                timestamp_list.append(call["time"])
+                                timestamp_list.append(float(call["time"]))
                     if timestamp_list and len(timestamp_list) > lower_bound:
                         timestamp_list.sort()
                         frequency = (timestamp_list[-1] - timestamp_list[0])/time_frequency_setting
